@@ -1,0 +1,16 @@
+.snakemake/
+
+logs/*
+!logs/.gitkeep
+
+data/*
+!data/.gitkeep
+
+output/*
+!output/.gitkeep
+
+install/*
+!install/.gitkeep
+
+spirit/*
+!spirit/.gitkeep

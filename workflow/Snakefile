@@ -1,0 +1,148 @@
+import itertools
+import os
+
+
+configfile: "config.yaml"
+
+
+include: "rules/common.smk"
+
+
+rule clean:
+    priority: -1
+    shell:
+        "rm -f output/Log*.txt"
+
+
+# ===== Benchmark ======================================================================================================
+
+rule benchmark_aggregate:
+    input:
+        expand(
+            "data/{branch}-{build}/{case}.{id}.json",
+            branch=config["branches"],
+            build=[*config["flags"].keys()],
+            case=config["cases"],
+            id=range(config["n_samples"]),
+        ),
+    output:
+        "data/aggregate.json",
+    params:
+        labels=list(
+            itertools.product(
+                config["branches"],
+                [*config["flags"].keys()],
+                config["cases"],
+                range(config["n_samples"]),
+            )
+        ),
+    log:
+        "logs/aggregate.log",
+    run:
+        import json
+
+        data = {}
+        for (branch, build, case, id), value in zip(params["labels"], input):
+            with open(value, "r") as f:
+                item = json.load(f)
+            data[".".join((branch, build, case, str(id)))] = item
+
+        with open(output[0], "w") as f:
+            json.dump(data, f)
+
+
+rule benchmark_sample_aggregate:
+    input:
+        expand(
+            "data/{build}/{case}.{id}.json",
+            id=range(config["n_samples"]),
+            allow_missing=True,
+        ),
+    params:
+        query=r"reduce inputs as $item ({}; reduce ($item | to_entries[]) as $kv (.; .[$kv.key] += [$kv.value]))"
+    output:
+        "data/{build}/{case}.json",
+    log:
+        "logs/benchmark-{build}-{case}.agg.log",
+    shell:
+        "jq -n '{params.query}' {input} > {output}"
+
+
+rule benchmark_run:
+    input:
+        activate=f"{config['install_prefix']}/{{build}}/venv/bin/activate",
+        done=f"{config['install_prefix']}/{{build}}/venv.done",
+        script="run_llg.py",
+        cfg="cfg_files/{case}.cfg",
+        image=lambda wildcards: f"input_configurations/initial_configuration_{get_soliton(wildcards.case)}.ovf",
+    priority: 98
+    threads: workflow.cores
+    output:
+        "data/{build}/{case}.{id,[0-9]+}.json",
+    log:
+        "logs/benchmark-{build}-{case}.{id}.log",
+    shell:
+        """
+        source {input.activate} && python3 {input.script} "{input.cfg}" "{input.image}" "{output}"
+        """
+
+
+# ====== Setup =========================================================================================================
+
+
+rule venv:
+    input:
+        "{prefix}/{build}/build.done",
+    output:
+        root=directory("{prefix}/{build,[^/]+}/venv"),
+        activate="{prefix}/{build,[^/]+}/venv/bin/activate",
+        done=touch("{prefix}/{build,[^/]+}/venv.done"),
+    priority: 99
+    params:
+        package_dir="./{prefix}/{build}/python"
+    log:
+        "logs/{prefix}/venv-{build}.log",
+    shell:
+        """
+        virtualenv --clear "{output.root}" \
+        && source "{output.activate}" \
+        && {output.root}/bin/pip install --disable-pip-version-check "{params.package_dir}"
+        """
+
+
+rule build:
+    input:
+        "spirit/{stage}/core",
+    output:
+        directory("{prefix}/{stage,[^/]+}-{label,[^-/]+}/python"),
+        touch("{prefix}/{stage,[^/]+}-{label,[^-/]+}/build.done"),
+    priority: 100
+    threads: workflow.cores
+    params:
+        build_dir="build_{label}",
+        install_prefix="{prefix}/{stage}-{label}",
+        common_flags=" ".join(
+            [
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DSPIRIT_UI_CXX_USE_QT=OFF",
+                "-DSPIRIT_UI_USE_IMGUI=OFF",
+                "-DSPIRIT_BUILD_TEST=OFF",
+                "-DSPIRIT_USE_FFTW=ON",
+            ]
+        ),
+        flags=lambda wildcards: " ".join(config["flags"][wildcards.label]),
+        threads=lambda wildcards: int((1 if re.search("cuda", wildcards.label) is None else 0.375) * workflow.cores)
+    log:
+        "logs/{prefix}/build-{stage}-{label}.log",
+    shell:
+        """
+        working_dir=$(pwd);
+        cd "{input}/.." \
+        && cmake --fresh {params.common_flags} {params.flags} -S . -B "{params.build_dir}" \
+        && cmake --build "{params.build_dir}" -j{params.threads} \
+        && cd $working_dir \
+        && cmake --install "{input}/../{params.build_dir}" \
+                 --prefix "{params.install_prefix}" \
+                 --component "spirit_core_python";
+        unset working_dir
+        """

@@ -1,0 +1,32 @@
+---
+install_prefix: install
+n_samples: 5
+flags:
+  base:
+    - '-DSPIRIT_USE_CUDA=OFF'
+    - '-DSPIRIT_USE_OPENMP=OFF'
+    - '-DSPIRIT_USE_STDPAR=OFF'
+  cuda:
+    - '-DSPIRIT_USE_CUDA=ON'
+    - '-DSPIRIT_CUDA_ARCH=75'
+    - '-DSPIRIT_USE_OPENMP=OFF'
+    - '-DSPIRIT_USE_STDPAR=OFF'
+  openmp:
+    - '-DSPIRIT_USE_CUDA=OFF'
+    - '-DSPIRIT_USE_OPENMP=ON'
+    - '-DSPIRIT_USE_STDPAR=OFF'
+  stdpar:
+    - '-DSPIRIT_USE_CUDA=OFF'
+    - '-DSPIRIT_USE_OPENMP=OFF'
+    - '-DSPIRIT_USE_STDPAR=ON'
+  openmp_stdpar:
+    - '-DSPIRIT_USE_CUDA=OFF'
+    - '-DSPIRIT_USE_OPENMP=ON'
+    - '-DSPIRIT_USE_STDPAR=ON'
+branches:
+  - benchmark-pre
+  - benchmark-post
+cases:
+  - pdfe_fcc_skyrmion_no_ddi
+  - pdfe_fcc_skyrmion_with_ddi
+  - hopfion
