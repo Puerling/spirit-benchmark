@@ -1,6 +1,6 @@
 from spirit import state, simulation, io
 from pathlib import Path
-
+import json
 
 def run_llg(cfg_file: Path, input_image_path: Path, benchmark_output_path: Path):
     """Run the LLG method.
@@ -21,11 +21,15 @@ def run_llg(cfg_file: Path, input_image_path: Path, benchmark_output_path: Path)
             p_state, simulation.METHOD_LLG, simulation.SOLVER_VP
         )
 
+        data = dict(
+            total_iterations=int(run_info.total_iterations),
+            total_walltime=float(run_info.total_walltime),
+            max_torque=float(run_info.max_torque),
+            total_ips=float(run_info.total_ips),
+        )
+
         with open(benchmark_output_path, "a") as f:
-            print(f"{run_info.total_iterations = }", file=f)
-            print(f"{run_info.total_walltime = }s", file=f)
-            print(f"{run_info.max_torque = }", file=f)
-            print(f"{run_info.total_ips = }", file=f)
+            json.dump(data, f)
 
 
 if __name__ == "__main__":
